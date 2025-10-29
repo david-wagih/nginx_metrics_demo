@@ -13,8 +13,8 @@ enable_public_ip = true
 allowed_admin_cidr  = "0.0.0.0/0"    # Admin ports (Prometheus, Grafana)
 allowed_nginx_cidr  = "0.0.0.0/0"    # Nginx port (public access)
 
-# AWS Key Pair - REQUIRED: Update with your key pair name
-key_name = "your-aws-key-pair-name"
+# GitHub Repository (automatically cloned and deployed)
+github_repo_url = "https://github.com/david-wagih/nginx_metrics_demo.git"
 
 # Project Configuration
 project_name = "nginx-metrics-demo"

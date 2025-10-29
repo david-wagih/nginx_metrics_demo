@@ -10,9 +10,10 @@ variable "instance_type" {
   default     = "t3.medium" # 2 vCPU, 4GB RAM - suitable for development
 }
 
-variable "key_name" {
-  description = "Name of the AWS key pair to use for SSH access"
+variable "github_repo_url" {
+  description = "GitHub repository URL to clone for the nginx metrics demo"
   type        = string
+  default     = "https://github.com/david-wagih/nginx_metrics_demo.git"
 }
 
 variable "allowed_admin_cidr" {

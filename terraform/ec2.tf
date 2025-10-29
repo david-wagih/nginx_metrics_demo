@@ -24,7 +24,7 @@ locals {
   ami_id = var.ami_id != "" ? var.ami_id : data.aws_ami.amazon_linux.id
 }
 
-# User data script to install Docker and Docker Compose
+# User data script to install Docker, clone repo, and start services
 locals {
   user_data = <<-EOF
     #!/bin/bash
@@ -48,20 +48,35 @@ locals {
     sudo dnf install -y git
     
     # Create application directory
-    mkdir -p /opt/nginx-metrics-demo
-    chown ec2-user:ec2-user /opt/nginx-metrics-demo
+    APP_DIR="/opt/nginx_metrics_demo"
+    mkdir -p $$APP_DIR
+    chown ec2-user:ec2-user $$APP_DIR
     
-    # Note: Docker Compose group changes require logout/login
-    # The user will need to SSH in again or use 'newgrp docker' to activate group changes
+    # Clone the repository
+    cd $$APP_DIR
+    sudo -u ec2-user git clone ${var.github_repo_url} .
     
-    # Create a simple message file
-    echo "Docker and Docker Compose installation completed!" > /opt/nginx-metrics-demo/README.txt
-    echo "Please SSH in again or run 'newgrp docker' to use docker commands without sudo" >> /opt/nginx-metrics-demo/README.txt
-    echo "" >> /opt/nginx-metrics-demo/README.txt
-    echo "To deploy:" >> /opt/nginx-metrics-demo/README.txt
-    echo "1. Copy your nginx_metrics_demo directory to /opt/nginx-metrics-demo" >> /opt/nginx-metrics-demo/README.txt
-    echo "2. cd /opt/nginx-metrics-demo" >> /opt/nginx-metrics-demo/README.txt
-    echo "3. docker compose up -d" >> /opt/nginx-metrics-demo/README.txt
+    # Activate docker group for current session
+    # Note: This requires the script to run as root, but we need to use docker as ec2-user
+    # We'll handle this by using sudo for docker commands or newgrp
+    
+    # Wait a moment for git clone to complete
+    sleep 5
+    
+    # Change ownership of cloned files
+    chown -R ec2-user:ec2-user $$APP_DIR
+    
+    # Start Docker Compose services as ec2-user
+    # Use runuser to run as ec2-user with docker group access
+    cd $$APP_DIR
+    
+    # Start services (using runuser to execute as ec2-user with proper group context)
+    runuser -l ec2-user -c "cd $$APP_DIR && /usr/local/bin/docker-compose up -d"
+    
+    # Log completion
+    echo "Nginx Metrics Demo deployed successfully!" > /tmp/deployment-status.txt
+    echo "Repository: ${var.github_repo_url}" >> /tmp/deployment-status.txt
+    echo "Deployment time: $$(date)" >> /tmp/deployment-status.txt
   EOF
 }
 
@@ -69,7 +84,7 @@ locals {
 resource "aws_instance" "nginx_metrics_demo" {
   ami                    = local.ami_id
   instance_type          = var.instance_type
-  key_name               = var.key_name
+  key_name               = aws_key_pair.nginx_metrics_demo.key_name
   vpc_security_group_ids = [aws_security_group.nginx_metrics_demo.id]
   user_data_base64       = base64encode(local.user_data)
 

@@ -20,7 +20,18 @@ output "instance_public_dns" {
 
 output "ssh_command" {
   description = "SSH command to connect to the instance"
-  value       = "ssh -i <your-key.pem> ec2-user@${aws_instance.nginx_metrics_demo.public_ip}"
+  value       = "ssh -i nginx-metrics-demo-key.pem ec2-user@${aws_instance.nginx_metrics_demo.public_ip}"
+}
+
+output "private_key" {
+  description = "Private key for SSH access (save this to a file)"
+  value       = tls_private_key.ec2_key.private_key_pem
+  sensitive   = true
+}
+
+output "private_key_filename" {
+  description = "Suggested filename for the private key"
+  value       = "nginx-metrics-demo-key.pem"
 }
 
 output "nginx_url" {
@@ -58,12 +69,17 @@ output "deployment_info" {
     - Grafana:   http://${aws_instance.nginx_metrics_demo.public_ip}:3000
     
     SSH Access:
-    ssh -i <your-key.pem> ec2-user@${aws_instance.nginx_metrics_demo.public_ip}
+    ssh -i nginx-metrics-demo-key.pem ec2-user@${aws_instance.nginx_metrics_demo.public_ip}
     
-    Next Steps:
-    1. SSH into the instance
-    2. Copy nginx_metrics_demo directory to /opt/nginx-metrics-demo
-    3. Run: cd /opt/nginx-metrics-demo && docker compose up -d
+    Private Key:
+    Save the private_key output to nginx-metrics-demo-key.pem:
+    terraform output -raw private_key > nginx-metrics-demo-key.pem
+    chmod 400 nginx-metrics-demo-key.pem
+    
+    Note: Services are automatically deployed from GitHub:
+    ${var.github_repo_url}
+    
+    Stack should be running automatically after instance startup!
   EOT
 }
 
