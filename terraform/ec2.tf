@@ -27,58 +27,51 @@ locals {
 # User data script to install Docker, clone repo, and start services
 locals {
   user_data = <<-EOF
-    #!/bin/bash
-    set -e
-    
-    # Update system
-    sudo dnf update -y
-    
-    # Install Docker
-    sudo dnf install -y docker
-    sudo systemctl start docker
-    sudo systemctl enable docker
-    sudo usermod -a -G docker ec2-user
-    
-    # Install Docker Compose
-    DOCKER_COMPOSE_VERSION=$$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep tag_name | cut -d '"' -f 4)
-    sudo curl -L "https://github.com/docker/compose/releases/download/$${DOCKER_COMPOSE_VERSION}/docker-compose-$$(uname -s)-$$(uname -m)" -o /usr/local/bin/docker-compose
-    sudo chmod +x /usr/local/bin/docker-compose
-    
-    # Install Git (if not already installed)
-    sudo dnf install -y git
-    
-    # Create application directory
-    APP_DIR="/opt/nginx_metrics_demo"
-    mkdir -p $$APP_DIR
-    chown ec2-user:ec2-user $$APP_DIR
-    
-    # Clone the repository
-    cd $$APP_DIR
-    sudo -u ec2-user git clone ${var.github_repo_url} .
-    
-    # Activate docker group for current session
-    # Note: This requires the script to run as root, but we need to use docker as ec2-user
-    # We'll handle this by using sudo for docker commands or newgrp
-    
-    # Wait a moment for git clone to complete
-    sleep 5
-    
-    # Change ownership of cloned files
-    chown -R ec2-user:ec2-user $$APP_DIR
-    
-    # Start Docker Compose services as ec2-user
-    # Use runuser to run as ec2-user with docker group access
-    cd $$APP_DIR
-    
-    # Start services (using runuser to execute as ec2-user with proper group context)
-    runuser -l ec2-user -c "cd $$APP_DIR && /usr/local/bin/docker-compose up -d"
-    
-    # Log completion
-    echo "Nginx Metrics Demo deployed successfully!" > /tmp/deployment-status.txt
-    echo "Repository: ${var.github_repo_url}" >> /tmp/deployment-status.txt
-    echo "Deployment time: $$(date)" >> /tmp/deployment-status.txt
-  EOF
+#!/bin/bash
+set -e
+
+echo "=== User Data Started $$(date) ===" | tee -a /var/log/user-data.log
+
+# Update system
+dnf update -y
+
+# Install Docker and Git
+dnf install -y docker git
+systemctl enable --now docker
+usermod -aG docker ec2-user
+
+# Install Docker Compose (standalone binary)
+echo "Installing Docker Compose..."
+DOCKER_COMPOSE_VERSION=$$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep tag_name | cut -d '"' -f 4)
+if [ -z "$$DOCKER_COMPOSE_VERSION" ]; then
+    DOCKER_COMPOSE_VERSION="v2.24.0"
+fi
+curl -L "https://github.com/docker/compose/releases/download/$${DOCKER_COMPOSE_VERSION}/docker-compose-$$(uname -s)-$$(uname -m)" -o /usr/local/bin/docker-compose
+chmod +x /usr/local/bin/docker-compose
+
+# Wait for Docker to be ready
+sleep 5
+
+# Create application directory
+APP_DIR="/opt/nginx_metrics_demo"
+mkdir -p $$APP_DIR
+chown ec2-user:ec2-user $$APP_DIR
+
+# Clone repository
+echo "Cloning ${var.github_repo_url}"
+sudo -u ec2-user git clone ${var.github_repo_url} $$APP_DIR
+
+# Build nginx image first (using legacy builder to avoid buildx issues)
+cd $$APP_DIR
+docker build -t nginx_metrics_demo-nginx ./nginx
+
+# Start all services
+/usr/local/bin/docker-compose up -d
+
+echo "=== Deployment Complete $$(date) ===" | tee -a /var/log/user-data.log
+EOF
 }
+
 
 # EC2 Instance
 resource "aws_instance" "nginx_metrics_demo" {
